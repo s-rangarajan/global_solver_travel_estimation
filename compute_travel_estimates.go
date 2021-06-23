@@ -17,6 +17,7 @@ type Coordinates struct {
 
 type ComputeTravelEstimatesRequest struct {
 	ServiceRegionID int                    `json:"service_region_id"`
+	DispatchTime    time.Time              `json:"dispatch_time"`
 	Locations       map[string]Coordinates `json:"locations"`
 	Pairs           map[string][]string    `json:"pairs"`
 }

@@ -5,6 +5,7 @@ import (
 	"math"
 	"runtime"
 	"sync"
+	"time"
 )
 
 type TravelEstimateInput struct {
@@ -25,15 +26,11 @@ type TravelEstimator interface {
 }
 
 type HaversineTravelEstimator struct {
-	RegionalSpeedMap map[string]float64
+	LookupSpeedWithContext func(context.Context, int, time.Time) (float64, error)
 }
 
-func NewHaversineTravelEstimator() *HaversineTravelEstimator {
-	return &HaversineTravelEstimator{}
-}
-
-func (h HaversineTravelEstimator) LookupSpeed(serviceRegionID int) (float64, bool) {
-	return 0, false
+func NewHaversineTravelEstimator(speedLookuper func(context.Context, int, time.Time) (float64, error)) *HaversineTravelEstimator {
+	return &HaversineTravelEstimator{speedLookuper}
 }
 
 func (h *HaversineTravelEstimator) EstimateWithContext(ctx context.Context, travelEstimatesRequest ComputeTravelEstimatesRequest) (ComputedTravelEstimates, error) {
@@ -67,8 +64,9 @@ func (h *HaversineTravelEstimator) EstimateWithContext(ctx context.Context, trav
 			computedTravelEstimates.TravelEstimates[fromLocation] = make(map[string]TravelEstimate, len(travelEstimatesRequest.Pairs[fromLocation]))
 		}
 		go func() {
-			localizedTravelSpeed, ok := h.LookupSpeed(travelEstimatesRequest.ServiceRegionID)
-			if !ok {
+			localizedTravelSpeed, err := h.LookupSpeedWithContext(ctx, travelEstimatesRequest.ServiceRegionID, travelEstimatesRequest.DispatchTime)
+			if err != nil {
+				//TODO: log error
 				localizedTravelSpeed = 15
 			}
 			for fromLocation := range travelEstimatesRequest.Pairs {
