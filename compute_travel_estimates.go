@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"fmt"
 	"net/http"
 	"time"
 )
@@ -22,6 +22,23 @@ type ComputeTravelEstimatesRequest struct {
 	Pairs           map[string][]string    `json:"pairs"`
 }
 
+func (c ComputeTravelEstimatesRequest) Validate() error {
+	if c.ServiceRegionID <= 0 {
+		return fmt.Errorf("missing/invalid service region id")
+	}
+	if c.DispatchTime.IsZero() {
+		return fmt.Errorf("missing dispatch time")
+	}
+	if c.Locations == nil {
+		return fmt.Errorf("missing locations")
+	}
+	if c.Pairs == nil {
+		return fmt.Errorf("missing pairs")
+	}
+
+	return nil
+}
+
 type TravelEstimate struct {
 	Distance float64 `json:"distance"`
 	Time     float64 `json:time"`
@@ -35,23 +52,27 @@ func ComputeTravelEstimatesWithContext(ctx context.Context, estimator TravelEsti
 	ctx, cancelFunc := context.WithTimeout(ctx, computeTimeout)
 	defer cancelFunc()
 
+	w.Header().Set("Content-Type", "application/json")
 	var computeRequest ComputeTravelEstimatesRequest
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&computeRequest); err != nil {
-		log.Println(err.Error())
 		w.WriteHeader(http.StatusUnprocessableEntity)
+		w.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, fmt.Errorf("error unmarshaling request: %w", err).Error())))
 		return
 	}
 
-	computedValues, err := estimator.EstimateWithContext(ctx, computeRequest)
+	if err := computeRequest.Validate(); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, fmt.Errorf("invalid request: %w", err).Error())))
+		return
+	}
+
+	computedValues, err := estimator.EstimateTravelWithContext(ctx, computeRequest)
 	if err != nil {
-		log.Println(err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(computedValues); err != nil {
-		log.Println(err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 }
